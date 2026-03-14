@@ -51,7 +51,7 @@ export default function WatchPage() {
     <>
       <header className="globalHeader">
         <div className="headerInner">
-          <h2>Studio Gallery</h2>
+          <h2>Gallery Studio</h2>
           <div className="actions">
             <Link className="playerHeaderBack" href={backHref}>
               Back to gallery

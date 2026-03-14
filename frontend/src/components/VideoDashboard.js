@@ -266,6 +266,16 @@ export default function VideoDashboard() {
     setUploadSummary(null);
   }
 
+  function onDropFiles(event) {
+    event.preventDefault();
+    const files = Array.from(event.dataTransfer?.files || []).filter((file) =>
+      file.type?.startsWith("video/")
+    );
+    if (!files.length) return;
+    setSelectedFiles(files);
+    setUploadSummary(null);
+  }
+
   function resetUploadForm() {
     if (activeUploadRequestRef.current) {
       activeUploadRequestRef.current.abort();
@@ -582,7 +592,7 @@ export default function VideoDashboard() {
       <header className="globalHeader">
         <div className="headerInner">
           <div className="headlineBlock">
-            <h1>Studio Gallery</h1>
+            <h1>Gallery Studio</h1>
           </div>
           <div className="actions">
             {connected && (
@@ -708,12 +718,12 @@ export default function VideoDashboard() {
             </div>
 
             <div className="uploadControls">
-              <label className="filePicker" htmlFor="gallery-upload-input">
+              <label className="filePicker" htmlFor="gallery-upload-input" onDragOver={(event) => event.preventDefault()} onDrop={onDropFiles}>
                 <span>Select Videos</span>
                 <span className="subtleText">
                   {selectedFiles.length > 0
                     ? `${selectedFiles.length} selected`
-                    : "MP4, MOV, WebM"}
+                    : "Drop videos here or MP4, MOV, WebM"}
                 </span>
               </label>
               <input
@@ -751,6 +761,12 @@ export default function VideoDashboard() {
                 </div>
               </div>
             </div>
+
+            {!!selectedFiles.length && !uploading && (
+              <p className="subtleText queueHint">
+                Queue: {selectedFiles.length} video{selectedFiles.length === 1 ? "" : "s"} ready
+              </p>
+            )}
 
             {(uploading || uploadProgress.phase === "processing") && (
               <div className="uploadProgress3d" aria-live="polite">

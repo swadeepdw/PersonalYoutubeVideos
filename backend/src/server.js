@@ -484,7 +484,3 @@ app.listen(PORT, async () => {
   await fs.mkdir(tempUploadDir, { recursive: true });
   console.log(`Backend listening on port ${PORT}`);
 });
-
-app.get("/health", (req, res) => {
-  res.json({ ok: true });
-});
