@@ -1,36 +1,52 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { google } from 'googleapis';
-import multer from 'multer';
-import fs from 'fs/promises';
-import { createReadStream } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import { google } from "googleapis";
+import multer from "multer";
+import fs from "fs/promises";
+import { createReadStream } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '..');
+const projectRoot = path.resolve(__dirname, "..");
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
-const frontendUrlsRaw = process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:3000';
+const frontendUrlsRaw =
+  process.env.FRONTEND_URLS ||
+  process.env.FRONTEND_URL ||
+  "http://localhost:3000";
 const frontendOrigins = frontendUrlsRaw
-  .split(',')
+  .split(",")
   .map((url) => url.trim())
   .filter(Boolean);
-const frontendRedirectUrl = frontendOrigins[0] || 'http://localhost:3000';
-const tokenStorePath = path.resolve(projectRoot, process.env.TOKEN_STORE_PATH || './data/oauth-token.json');
-const tempUploadDir = path.resolve(projectRoot, process.env.TMP_UPLOAD_DIR || './data/tmp-uploads');
-const maxFilesPerUpload = Math.max(1, Math.min(Number(process.env.MAX_FILES_PER_UPLOAD || 20), 50));
+const frontendRedirectUrl = frontendOrigins[0] || "http://localhost:3000";
+const tokenStorePath = path.resolve(
+  projectRoot,
+  process.env.TOKEN_STORE_PATH || "./data/oauth-token.json"
+);
+const tempUploadDir = path.resolve(
+  projectRoot,
+  process.env.TMP_UPLOAD_DIR || "./data/tmp-uploads"
+);
+const maxFilesPerUpload = Math.max(
+  1,
+  Math.min(Number(process.env.MAX_FILES_PER_UPLOAD || 20), 50)
+);
 
-const requiredEnv = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'];
+const requiredEnv = [
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "GOOGLE_REDIRECT_URI",
+];
 
 const missingEnv = requiredEnv.filter((name) => !process.env[name]);
 if (missingEnv.length > 0) {
-  console.error(`Missing env vars: ${missingEnv.join(', ')}`);
+  console.error(`Missing env vars: ${missingEnv.join(", ")}`);
   process.exit(1);
 }
 
@@ -43,40 +59,49 @@ const oauth2Client = new google.auth.OAuth2(
 const upload = multer({
   dest: tempUploadDir,
   limits: {
-    files: maxFilesPerUpload
+    files: maxFilesPerUpload,
   },
   fileFilter: (_req, file, cb) => {
-    if (!file.mimetype?.startsWith('video/')) {
-      cb(new Error(`Unsupported file type for ${file.originalname}. Please upload video files only.`));
+    if (!file.mimetype?.startsWith("video/")) {
+      cb(
+        new Error(
+          `Unsupported file type for ${file.originalname}. Please upload video files only.`
+        )
+      );
       return;
     }
     cb(null, true);
-  }
+  },
 });
 
-app.use(cors({ origin: frontendOrigins }));
+app.use(
+  cors({
+    origin: frontendOrigins,
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 async function readSavedTokens() {
   try {
-    const raw = await fs.readFile(tokenStorePath, 'utf8');
+    const raw = await fs.readFile(tokenStorePath, "utf8");
     return JSON.parse(raw);
   } catch (error) {
-    if (error.code === 'ENOENT') return null;
+    if (error.code === "ENOENT") return null;
     throw error;
   }
 }
 
 async function saveTokens(tokens) {
   await fs.mkdir(path.dirname(tokenStorePath), { recursive: true });
-  await fs.writeFile(tokenStorePath, JSON.stringify(tokens, null, 2), 'utf8');
+  await fs.writeFile(tokenStorePath, JSON.stringify(tokens, null, 2), "utf8");
 }
 
 async function clearTokens() {
   try {
     await fs.unlink(tokenStorePath);
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    if (error.code !== "ENOENT") throw error;
   }
 }
 
@@ -84,7 +109,7 @@ async function deleteTempFile(filePath) {
   try {
     await fs.unlink(filePath);
   } catch (error) {
-    if (error.code !== 'ENOENT') {
+    if (error.code !== "ENOENT") {
       console.error(`Failed deleting temp file ${filePath}:`, error.message);
     }
   }
@@ -105,35 +130,43 @@ async function getAuthenticatedYoutubeClient() {
     oauth2Client.setCredentials(merged);
   }
 
-  return google.youtube({ version: 'v3', auth: oauth2Client });
+  return google.youtube({ version: "v3", auth: oauth2Client });
 }
 
 function getUploadTitleFromFileName(fileName) {
-  return path.parse(fileName).name.slice(0, 100) || 'Untitled Upload';
+  return path.parse(fileName).name.slice(0, 100) || "Untitled Upload";
 }
 
-app.get('/health', (_req, res) => {
+function normalizeVisibility(rawVisibility) {
+  const value = String(rawVisibility || "").toLowerCase();
+  if (value === "public" || value === "unlisted" || value === "private") {
+    return value;
+  }
+  return "private";
+}
+
+app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.get('/auth/url', (_req, res) => {
+app.get("/auth/url", (_req, res) => {
   const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    prompt: 'consent',
+    access_type: "offline",
+    prompt: "consent",
     scope: [
-      'https://www.googleapis.com/auth/youtube.readonly',
-      'https://www.googleapis.com/auth/youtube.upload'
-    ]
+      "https://www.googleapis.com/auth/youtube.readonly",
+      "https://www.googleapis.com/auth/youtube.upload",
+    ],
   });
 
   res.json({ url });
 });
 
-app.get('/auth/callback', async (req, res) => {
+app.get("/auth/callback", async (req, res) => {
   const { code } = req.query;
 
-  if (!code || typeof code !== 'string') {
-    return res.status(400).send('Missing OAuth code.');
+  if (!code || typeof code !== "string") {
+    return res.status(400).send("Missing OAuth code.");
   }
 
   try {
@@ -142,50 +175,80 @@ app.get('/auth/callback', async (req, res) => {
 
     return res.redirect(`${frontendRedirectUrl}/?connected=1`);
   } catch (error) {
-    console.error('OAuth callback error:', error.message);
+    console.error("OAuth callback error:", error.message);
     return res.redirect(`${frontendRedirectUrl}/?connected=0`);
   }
 });
 
-app.get('/auth/status', async (_req, res) => {
+app.get("/auth/status", async (_req, res) => {
   const tokens = await readSavedTokens();
-  res.json({ connected: Boolean(tokens) });
+
+  if (!tokens) {
+    return res.json({ connected: false });
+  }
+
+  try {
+    const youtube = await getAuthenticatedYoutubeClient();
+    const channelResponse = await youtube.channels.list({
+      mine: true,
+      part: ["snippet"],
+    });
+    const channel = channelResponse.data.items?.[0];
+
+    return res.json({
+      connected: true,
+      channelName: channel?.snippet?.title || null,
+      channelAvatar:
+        channel?.snippet?.thumbnails?.default?.url ||
+        channel?.snippet?.thumbnails?.medium?.url ||
+        channel?.snippet?.thumbnails?.high?.url ||
+        null,
+    });
+  } catch (error) {
+    console.error("Error checking auth status:", error.message);
+    return res.json({ connected: true });
+  }
 });
 
-app.post('/auth/logout', async (_req, res) => {
+app.post("/auth/logout", async (_req, res) => {
   await clearTokens();
   res.json({ success: true });
 });
 
-app.get('/api/videos', async (req, res) => {
+app.get("/api/videos", async (req, res) => {
   const maxResults = Math.min(Number(req.query.maxResults || 25), 50);
 
   try {
     const youtube = await getAuthenticatedYoutubeClient();
 
     if (!youtube) {
-      return res.status(401).json({ error: 'Not authenticated. Connect YouTube first.' });
+      return res
+        .status(401)
+        .json({ error: "Not authenticated. Connect YouTube first." });
     }
 
     const channelResponse = await youtube.channels.list({
       mine: true,
-      part: ['contentDetails', 'snippet']
+      part: ["contentDetails", "snippet"],
     });
 
     const channel = channelResponse.data.items?.[0];
-    const uploadsPlaylistId = channel?.contentDetails?.relatedPlaylists?.uploads;
+    const uploadsPlaylistId =
+      channel?.contentDetails?.relatedPlaylists?.uploads;
 
     if (!uploadsPlaylistId) {
-      return res.status(404).json({ error: 'Could not find uploads playlist for this account.' });
+      return res
+        .status(404)
+        .json({ error: "Could not find uploads playlist for this account." });
     }
 
     const playlistResponse = await youtube.playlistItems.list({
       playlistId: uploadsPlaylistId,
-      part: ['snippet', 'contentDetails'],
-      maxResults
+      part: ["snippet", "contentDetails"],
+      maxResults,
     });
 
-    const videos = (playlistResponse.data.items || [])
+    const playlistVideos = (playlistResponse.data.items || [])
       .map((item) => ({
         id: item.contentDetails?.videoId,
         title: item.snippet?.title,
@@ -195,101 +258,211 @@ app.get('/api/videos', async (req, res) => {
           item.snippet?.thumbnails?.high?.url ||
           item.snippet?.thumbnails?.medium?.url ||
           item.snippet?.thumbnails?.default?.url,
-        channelTitle: item.snippet?.channelTitle
+        channelTitle: item.snippet?.channelTitle,
+        privacyStatus: null,
       }))
       .filter((video) => Boolean(video.id));
 
+    const videoIds = playlistVideos.map((video) => video.id).filter(Boolean);
+    let privacyById = new Map();
+
+    if (videoIds.length > 0) {
+      const detailResponse = await youtube.videos.list({
+        id: videoIds.join(","),
+        part: ["status"],
+      });
+      const detailItems = detailResponse.data.items || [];
+      privacyById = new Map(
+        detailItems.map((item) => [item.id, item.status?.privacyStatus || null])
+      );
+    }
+
+    const videos = playlistVideos.map((video) => ({
+      ...video,
+      privacyStatus: privacyById.get(video.id) || null,
+    }));
+
     return res.json({
       channel: channel?.snippet?.title || null,
-      videos
+      channelAvatar:
+        channel?.snippet?.thumbnails?.default?.url ||
+        channel?.snippet?.thumbnails?.medium?.url ||
+        channel?.snippet?.thumbnails?.high?.url ||
+        null,
+      videos,
     });
   } catch (error) {
-    console.error('Error fetching videos:', error.message);
-    return res.status(500).json({ error: 'Failed to fetch videos from YouTube API.' });
+    console.error("Error fetching videos:", error.message);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch videos from YouTube API." });
   }
 });
 
-app.post('/api/videos/upload', upload.array('videos', maxFilesPerUpload), async (req, res) => {
-  const visibility = req.body.visibility === 'public' ? 'public' : 'private';
-  const description = (req.body.description || '').slice(0, 5000);
-  const files = req.files || [];
+app.post(
+  "/api/videos/upload",
+  upload.array("videos", maxFilesPerUpload),
+  async (req, res) => {
+    const visibility = normalizeVisibility(req.body.visibility);
+    const description = (req.body.description || "").slice(0, 5000);
+    const files = req.files || [];
 
-  if (!files.length) {
-    return res.status(400).json({ error: 'Please select at least one video file to upload.' });
-  }
-
-  let youtube;
-  try {
-    youtube = await getAuthenticatedYoutubeClient();
-  } catch (error) {
-    console.error('Auth client init failed:', error.message);
-    for (const file of files) {
-      await deleteTempFile(file.path);
+    if (!files.length) {
+      return res
+        .status(400)
+        .json({ error: "Please select at least one video file to upload." });
     }
-    return res.status(500).json({ error: 'Failed to initialize YouTube client.' });
-  }
 
-  if (!youtube) {
-    for (const file of files) {
-      await deleteTempFile(file.path);
-    }
-    return res.status(401).json({ error: 'Not authenticated. Connect YouTube first.' });
-  }
-
-  const uploaded = [];
-  const failed = [];
-
-  for (const file of files) {
+    let youtube;
     try {
-      const title = getUploadTitleFromFileName(file.originalname);
-      const response = await youtube.videos.insert({
-        part: ['snippet', 'status'],
-        requestBody: {
-          snippet: {
-            title,
-            description
-          },
-          status: {
-            privacyStatus: visibility
-          }
-        },
-        media: {
-          body: createReadStream(file.path)
-        }
-      });
-
-      uploaded.push({
-        fileName: file.originalname,
-        videoId: response.data.id,
-        title,
-        privacyStatus: visibility
-      });
+      youtube = await getAuthenticatedYoutubeClient();
     } catch (error) {
-      const reason =
-        error?.response?.data?.error?.message ||
-        error?.errors?.[0]?.message ||
-        error.message ||
-        'Unknown upload error';
-
-      failed.push({
-        fileName: file.originalname,
-        error: reason
-      });
-    } finally {
-      await deleteTempFile(file.path);
+      console.error("Auth client init failed:", error.message);
+      for (const file of files) {
+        await deleteTempFile(file.path);
+      }
+      return res
+        .status(500)
+        .json({ error: "Failed to initialize YouTube client." });
     }
+
+    if (!youtube) {
+      for (const file of files) {
+        await deleteTempFile(file.path);
+      }
+      return res
+        .status(401)
+        .json({ error: "Not authenticated. Connect YouTube first." });
+    }
+
+    const uploaded = [];
+    const failed = [];
+
+    for (const file of files) {
+      try {
+        const title = getUploadTitleFromFileName(file.originalname);
+        const response = await youtube.videos.insert({
+          part: ["snippet", "status"],
+          requestBody: {
+            snippet: {
+              title,
+              description,
+            },
+            status: {
+              privacyStatus: visibility,
+            },
+          },
+          media: {
+            body: createReadStream(file.path),
+          },
+        });
+
+        uploaded.push({
+          fileName: file.originalname,
+          videoId: response.data.id,
+          title,
+          privacyStatus: visibility,
+        });
+      } catch (error) {
+        const reason =
+          error?.response?.data?.error?.message ||
+          error?.errors?.[0]?.message ||
+          error.message ||
+          "Unknown upload error";
+
+        failed.push({
+          fileName: file.originalname,
+          error: reason,
+        });
+      } finally {
+        await deleteTempFile(file.path);
+      }
+    }
+
+    const statusCode = failed.length ? 207 : 200;
+    return res.status(statusCode).json({
+      uploaded,
+      failed,
+      summary: {
+        total: files.length,
+        success: uploaded.length,
+        failed: failed.length,
+      },
+    });
+  }
+);
+
+app.get("/api/videos/processing-status", async (req, res) => {
+  const rawVideoIds = String(req.query.videoIds || "");
+  const videoIds = rawVideoIds
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .slice(0, 50);
+
+  if (!videoIds.length) {
+    return res
+      .status(400)
+      .json({ error: "Provide one or more videoIds query values." });
   }
 
-  const statusCode = failed.length ? 207 : 200;
-  return res.status(statusCode).json({
-    uploaded,
-    failed,
-    summary: {
-      total: files.length,
-      success: uploaded.length,
-      failed: failed.length
+  try {
+    const youtube = await getAuthenticatedYoutubeClient();
+    if (!youtube) {
+      return res
+        .status(401)
+        .json({ error: "Not authenticated. Connect YouTube first." });
     }
-  });
+
+    const response = await youtube.videos.list({
+      id: videoIds.join(","),
+      part: ["status", "processingDetails"],
+    });
+
+    const items = response.data.items || [];
+    const itemById = new Map(items.map((item) => [item.id, item]));
+
+    const statuses = videoIds.map((videoId) => {
+      const item = itemById.get(videoId);
+      const uploadStatus = item?.status?.uploadStatus || "uploaded";
+      const processingStatus =
+        item?.processingDetails?.processingStatus ||
+        (uploadStatus === "processed" ? "succeeded" : "processing");
+      const isProcessing =
+        uploadStatus !== "processed" || processingStatus === "processing";
+
+      return {
+        videoId,
+        uploadStatus,
+        processingStatus,
+        privacyStatus: item?.status?.privacyStatus || null,
+        processingFailureReason:
+          item?.processingDetails?.processingFailureReason || null,
+        rejectionReason: item?.processingDetails?.rejectionReason || null,
+        state: isProcessing ? "processing" : "ready",
+      };
+    });
+
+    const processing = statuses.filter(
+      (item) => item.state === "processing"
+    ).length;
+    const ready = statuses.length - processing;
+
+    return res.json({
+      statuses,
+      summary: {
+        total: statuses.length,
+        processing,
+        ready,
+        state: processing > 0 ? "processing" : "ready",
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching video processing status:", error.message);
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch video processing status." });
+  }
 });
 
 app.use((error, _req, res, _next) => {
@@ -298,14 +471,20 @@ app.use((error, _req, res, _next) => {
   }
 
   if (error) {
-    return res.status(400).json({ error: error.message || 'Upload failed.' });
+    return res.status(400).json({ error: error.message || "Upload failed." });
   }
 
-  return res.status(500).json({ error: 'Unexpected server error.' });
+  return res.status(500).json({ error: "Unexpected server error." });
 });
 
-app.listen(port, async () => {
+const PORT = process.env.PORT || 4000;
+
+app.listen(PORT, async () => {
   await fs.mkdir(path.dirname(tokenStorePath), { recursive: true });
   await fs.mkdir(tempUploadDir, { recursive: true });
-  console.log(`Backend listening on http://localhost:${port}`);
+  console.log(`Backend listening on port ${PORT}`);
+});
+
+app.get("/health", (req, res) => {
+  res.json({ ok: true });
 });
